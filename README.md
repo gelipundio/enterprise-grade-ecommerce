@@ -47,8 +47,66 @@ For logical reasons I am not revealing client, challenge and the example I got v
 ## Future concerns
 1. Caching, indexing, how is the performance going to looks like in the future, once it is running in a prod env?
 2. What kind of observability should? we have maybe require data dog or new relic?
-3.  
+
+## Comments after implementation
+1. Codex suggested to stay in the focus of the needs and avoid login for now, but the problem with that is there isn't an actual way to know who is a buyer and who is an admin. that means that any user can do annything so far. the proposal is that in the future we highly require a way to separate backoffice of the actual ecommerce
+2. I was aware of possible code injection via csv, but didn't want to go that deep, but then during testing I realized that there was actually some xss and sql injection and covered it
+3. Added a multiselect in the admin page so i can drop multiple products in order to test easily
+
 
 # IA generated docs
 
+## Implemented approach
+
+The application is a Next.js App Router project with separate buyer and admin surfaces. Buyer flows live at `/` and `/checkout`; admin product chores live at `/admin`. Authentication, roles, and real payments are intentionally out of scope for this challenge version.
+
+The core domain uses Prisma and PostgreSQL. Products store money as `priceCents`, stock as an integer, and optional weight as `weightGrams`. Categories are normalized in a separate table. CSV imports create an `ImportRun` plus row-level issues so valid rows can still be imported when other rows fail.
+
+## Main decisions
+
+- SKU is the product identity for CSV import upserts.
+- CSV required fields are `name`, `sku`, `category`, `price`, and `stock`.
+- Optional CSV fields are `description` and `weight_kg`.
+- `free` prices become `0` cents, currency formatting like `$29.99` is accepted, and prices are rounded to integer cents.
+- `weight_kg` is rounded to integer grams.
+- Negative stock is clamped to `0` and reported as a warning.
+- Product text fields and CSV text fields are treated as plain text only. They reject HTML tags such as `<strong>Product</strong>`, XSS payloads such as `<script>alert('xss')</script>`, and SQL-control payloads such as `Robert'); DROP TABLE products;--`.
+- Checkout records buyer name and email, creates a fake paid order, snapshots order item data, and decrements stock in one Prisma transaction.
+
+## Validation and security notes
+
+Validation runs in reusable service modules, not only in browser forms. Product create/update requests validate `sku`, `name`, `description`, and `categoryName` before writing to the database. CSV imports validate `name`, `sku`, `category`, and `description` for each row before normalization and upsert.
+
+Rows containing potentially unsafe text are skipped and reported with row-level errors. The current check blocks HTML tags, common XSS vectors including inline event attributes and `javascript:` URLs, SQL comment/control markers, and destructive SQL statement patterns. Prisma parameterizes database queries, so SQL injection payloads are not executed as SQL, but these values are still rejected so suspicious content is not stored or displayed later.
+
+## Project structure
+
+- `src/app`: Next.js pages and route handlers.
+- `src/components`: Small client components for admin forms, CSV import, product tables, and checkout.
+- `src/services`: Reusable CSV, product, and checkout domain logic.
+- `prisma`: Prisma schema, migration, and seed script.
+- `tests/unit`: Vitest coverage for parser, product rules, and checkout rules.
+- `tests/e2e`: Playwright smoke tests for buyer, admin, and checkout surfaces.
+- `docs/implementation-plan.md`: Reviewable implementation plan.
+
+## Notes about private challenge data
+
+The private PDF and CSV remain in `challenge/`, which is ignored by git. The CSV was opened on Monday July 6th 2026 as noted above. Public docs intentionally avoid copying the private prompt or sample data.
+
 # Up and running
+
+1. Copy `.env.example` to `.env`.
+2. Start PostgreSQL with `docker compose up db`.
+3. Install dependencies with `pnpm install`.
+4. Generate the Prisma client with `pnpm db:generate`.
+5. Run migrations with `pnpm db:migrate`.
+6. Optionally seed a sample product with `pnpm db:seed`.
+7. Start the app with `pnpm dev`.
+
+Useful checks:
+
+- `pnpm lint`
+- `pnpm test`
+- `pnpm exec playwright test`
+- `pnpm build`
+- `docker compose up --build`
