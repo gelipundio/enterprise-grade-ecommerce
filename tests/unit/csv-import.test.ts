@@ -49,7 +49,7 @@ describe("CSV import normalization", () => {
         rowNumber: 2,
         field: "description",
         severity: "ERROR",
-        message: "description contains potentially unsafe markup, script, or SQL control content"
+        message: "description contains potentially unsafe markup or script content"
       })
     );
   });
@@ -69,18 +69,12 @@ describe("CSV import normalization", () => {
     );
   });
 
-  it("skips rows with SQL-control payloads in product text", () => {
-    const csv = "name,sku,category,description,price,stock\nRobert'); DROP TABLE products;--,W-1,Tools,Plain,10,2\n";
+  it("allows SQL keywords in product text", () => {
+    const csv = "name,sku,category,description,price,stock\nRobert'); DROP TABLE products;-- display stand,W-1,Tools,Plain,10,2\n";
     const result = parseProductCsv(csv);
 
-    expect(result.products).toHaveLength(0);
-    expect(result.skippedCount).toBe(1);
-    expect(result.issues).toContainEqual(
-      expect.objectContaining({
-        rowNumber: 2,
-        field: "name",
-        severity: "ERROR"
-      })
-    );
+    expect(result.products).toHaveLength(1);
+    expect(result.products[0]?.name).toBe("Robert'); DROP TABLE products;-- display stand");
+    expect(result.skippedCount).toBe(0);
   });
 });

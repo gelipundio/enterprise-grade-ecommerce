@@ -23,14 +23,14 @@ This implementation builds the challenge core only: product CRUD, CSV import, bu
 - `weight_kg` is stored as integer grams
 - Negative stock is clamped to `0` and reported as a warning
 - Rows with missing required values or unparseable required values are skipped
-- Product and CSV text fields are plain text only and reject HTML tags, XSS payloads like `<script>alert('xss')</script>`, and SQL-control payloads like `Robert'); DROP TABLE products;--`
+- Product and CSV text fields are plain text only and reject HTML tags plus XSS payloads like `<script>alert('xss')</script>`
 - Valid rows are imported even when other rows fail
 
 ## Validation And Security
 
 Validation is enforced in service modules so browser forms, API callers, and CSV imports share the same rules. Product create/update validates `sku`, `name`, `description`, and `categoryName`. CSV import validates row-level `name`, `sku`, `category`, and `description` before inserting or updating products.
 
-Potential XSS or SQL-control content is treated as an error, not sanitized and stored. The current denylist blocks HTML tags, inline event attributes, `javascript:` URLs, SQL comment/control markers, and destructive SQL statement patterns. Prisma uses parameterized queries, so SQL injection payloads are not executed as SQL, but CSV rows with unsafe text are still skipped and included in the import report with row number, field, severity, and message.
+Potential XSS content is treated as an error, not sanitized and stored. The current check blocks HTML tags, inline event attributes, and `javascript:` URLs. Prisma uses parameterized queries, so SQL keywords in legitimate product copy are stored as plain text rather than blocked by a SQL denylist.
 
 ## Alternatives Considered
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { checkout, InsufficientStockError, type CheckoutClient } from "@/services/checkout";
 
-function createCheckoutClient(stock: number): CheckoutClient & { updatedStock: number; orderCreated: boolean } {
+function createCheckoutClient(stock: number, options: { failConditionalUpdate?: boolean } = {}): CheckoutClient & { updatedStock: number; orderCreated: boolean } {
   const state = {
     updatedStock: stock,
     orderCreated: false,
@@ -9,9 +9,13 @@ function createCheckoutClient(stock: number): CheckoutClient & { updatedStock: n
       async findMany() {
         return [{ id: "p1", sku: "SKU-1", name: "Product", priceCents: 500, stock: state.updatedStock }];
       },
-      async update(args: { data: { stock: { decrement: number } } }) {
+      async updateMany(args: { where: { stock: { gte: number } }; data: { stock: { decrement: number } } }) {
+        if (options.failConditionalUpdate || state.updatedStock < args.where.stock.gte) {
+          return { count: 0 };
+        }
+
         state.updatedStock -= args.data.stock.decrement;
-        return {};
+        return { count: 1 };
       }
     },
     order: {
@@ -54,5 +58,19 @@ describe("checkout service", () => {
     ).rejects.toBeInstanceOf(InsufficientStockError);
     expect(client.orderCreated).toBe(false);
     expect(client.updatedStock).toBe(1);
+  });
+
+  it("rejects when the conditional stock decrement loses a race", async () => {
+    const client = createCheckoutClient(3, { failConditionalUpdate: true });
+
+    await expect(
+      checkout(client, {
+        buyerName: "Buyer",
+        buyerEmail: "buyer@example.com",
+        items: [{ productId: "p1", quantity: 2 }]
+      })
+    ).rejects.toBeInstanceOf(InsufficientStockError);
+    expect(client.updatedStock).toBe(3);
+    expect(client.orderCreated).toBe(false);
   });
 });

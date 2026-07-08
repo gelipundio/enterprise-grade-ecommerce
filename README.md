@@ -70,14 +70,14 @@ The core domain uses Prisma and PostgreSQL. Products store money as `priceCents`
 - `free` prices become `0` cents, currency formatting like `$29.99` is accepted, and prices are rounded to integer cents.
 - `weight_kg` is rounded to integer grams.
 - Negative stock is clamped to `0` and reported as a warning.
-- Product text fields and CSV text fields are treated as plain text only. They reject HTML tags such as `<strong>Product</strong>`, XSS payloads such as `<script>alert('xss')</script>`, and SQL-control payloads such as `Robert'); DROP TABLE products;--`.
+- Product text fields and CSV text fields are treated as plain text only. They reject HTML tags such as `<strong>Product</strong>` and XSS payloads such as `<script>alert('xss')</script>`.
 - Checkout records buyer name and email, creates a fake paid order, snapshots order item data, and decrements stock in one Prisma transaction.
 
 ## Validation and security notes
 
 Validation runs in reusable service modules, not only in browser forms. Product create/update requests validate `sku`, `name`, `description`, and `categoryName` before writing to the database. CSV imports validate `name`, `sku`, `category`, and `description` for each row before normalization and upsert.
 
-Rows containing potentially unsafe text are skipped and reported with row-level errors. The current check blocks HTML tags, common XSS vectors including inline event attributes and `javascript:` URLs, SQL comment/control markers, and destructive SQL statement patterns. Prisma parameterizes database queries, so SQL injection payloads are not executed as SQL, but these values are still rejected so suspicious content is not stored or displayed later.
+Rows containing potentially unsafe browser-rendered text are skipped and reported with row-level errors. The current check blocks HTML tags, common XSS vectors including inline event attributes and `javascript:` URLs. Prisma parameterizes database queries, so SQL keywords in legitimate product copy are stored as plain text instead of being treated as SQL.
 
 ## Project structure
 

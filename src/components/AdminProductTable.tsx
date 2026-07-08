@@ -79,10 +79,21 @@ export function AdminProductTable({ refreshKey = 0 }: { refreshKey?: number }) {
   async function removeSelected() {
     const ids = [...selectedIds];
     setIsDeleting(true);
-    await Promise.all(ids.map((id) => fetch(`/api/products/${id}`, { method: "DELETE" })));
-    setProducts((current) => current.filter((product) => !selectedIds.has(product.id)));
-    setSelectedIds(new Set());
-    setIsDeleting(false);
+    try {
+      const response = await fetch("/api/products", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids })
+      });
+
+      if (response.ok) {
+        const deletedIds = new Set(ids);
+        setProducts((current) => current.filter((product) => !deletedIds.has(product.id)));
+        setSelectedIds(new Set());
+      }
+    } finally {
+      setIsDeleting(false);
+    }
   }
 
   const allVisibleSelected = products.length > 0 && products.every((product) => selectedIds.has(product.id));

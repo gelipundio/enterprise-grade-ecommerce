@@ -26,7 +26,7 @@ type CheckoutProduct = {
 export type CheckoutClient = {
   product: {
     findMany(args: { where: { id: { in: string[] } } }): Promise<CheckoutProduct[]>;
-    update(args: { where: { id: string }; data: { stock: { decrement: number } } }): Promise<unknown>;
+    updateMany(args: { where: { id: string; stock: { gte: number } }; data: { stock: { decrement: number } } }): Promise<{ count: number }>;
   };
   order: {
     create(args: {
@@ -91,6 +91,21 @@ export async function checkout(db: CheckoutClient, input: CheckoutInput) {
 
     const totalCents = orderItems.reduce((sum, item) => sum + item.lineTotalCents, 0);
 
+    for (const item of parsed.items) {
+      const result = await tx.product.updateMany({
+        where: {
+          id: item.productId,
+          stock: { gte: item.quantity }
+        },
+        data: { stock: { decrement: item.quantity } }
+      });
+
+      if (result.count !== 1) {
+        const product = productsById.get(item.productId);
+        throw new InsufficientStockError(product ? `${product.name} no longer has enough stock` : `Product ${item.productId} was not found`);
+      }
+    }
+
     const order = await tx.order.create({
       data: {
         buyerName: parsed.buyerName.trim(),
@@ -100,13 +115,6 @@ export async function checkout(db: CheckoutClient, input: CheckoutInput) {
       },
       include: { items: true }
     });
-
-    for (const item of parsed.items) {
-      await tx.product.update({
-        where: { id: item.productId },
-        data: { stock: { decrement: item.quantity } }
-      });
-    }
 
     return order;
   });
